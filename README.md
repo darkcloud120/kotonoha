@@ -1,31 +1,30 @@
-# ことのは Kotonoha v0.2
+# ことのは Kotonoha v0.3
 
-個人用日文歌詞閱讀器。純靜態網頁，不需要 npm 或後端。
+個人用日文歌詞閱讀器。純靜態 GitHub Pages 網站；Chrome / Edge 擴充功能提供電腦 YouTube Music 自動同步。
 
-## GitHub Pages
-1. 建立新的 public repository，例如 `kotonoha`。
-2. 解壓縮下載檔案，將 `index.html`、`style.css`、`app.js`、`README.md`、`.nojekyll` 放到 repository 根目錄。
-3. Settings → Pages → Build and deployment → Source: Deploy from a branch → main → /(root) → Save。
-4. 部署完成後，在 Pages 頁面開啟 GitHub 顯示的網址。
+## 更新網站
+1. 將網站 ZIP 解壓縮，將 index.html、app.js、sync.js（新增）、style.css、kana-worker.js、README.md 上傳到原 repository 根目錄，覆蓋同名檔案。保留原本的 .nojekyll。
+2. 不必重建 Pages。Commit changes，部署完成後 Ctrl+F5 確認左上顯示 v0.3。
+3. optional-ai 仍為可選的私人 Worker 後端，無須上傳 Pages；不要公開 API 金鑰。
 
-## 測試
-- 按「試聽示範（無音訊）」載入自創歌詞與中文翻譯；按 ▶ 測試計時、高亮和捲動。
-- 搜尋歌名如 W/X/Y，歌手 Tani Yuuki；選擇正確錄音版本。結果取決於 LRCLIB。搜尋會把歌名與歌手送往 LRCLIB。
-- 如果有同步歌詞，音樂從頭開始時同時按 ▶，或用滑桿設定目前時間。暫停/快轉音樂時也須手動調整本頁。
-- 第一次假名分析需從 jsDelivr 下載 Kuromoji 及字典。讀音是字典推定，不保證符合特殊唱法；不認識的漢字可能沒有假名。
-- 支援純文字/LRC 匯入、時間偏移（正值表示歌詞更早顯示）、字體和顯示設定。沒有時間戳的歌詞不會假裝有同步。
-- 中文翻譯支援手動貼上，每個有文字的原文行對應一行。翻譯保存在當前瀏覽器 localStorage，不會跨設備同步。
+## 安裝電腦擴充功能
+1. 將另附的 kotonoha-extension-v0.3.zip 解壓縮到電腦固定資料夾，裡面有 manifest.json。不要在 ZIP 裡直接操作，也不要上傳 GitHub Pages。
+2. Chrome 輸入 chrome://extensions/；Edge 輸入 edge://extensions/。開啟開發人員模式，按「載入未封裝項目」，選擇 manifest.json 所在的資料夾。
+3. 點瀏覽器工具列拼圖圖示，打開 Kotonoha · YT Music Sync（可釘選）。貼上你已部署的完整 GitHub Pages 網址（https://你的帳號.github.io/kotonoha/），按儲存並授權。同意該 github.io 網站權限。
+4. 同一個瀏覽器/使用者設定檔中開啟歌詞頁與 https://music.youtube.com/，重新整理兩頁，播放歌曲。網站「跟隨 YouTube Music」需勾選。
+5. 歌詞網站顯示已連線、歌名及歌手。測試播放、暫停、拖曳時間、下一首、播放清單自然換歌。擴充功能不接管播放器；在 YouTube Music 操作。兩個分頁需維持開啟。
 
-## 還沒有的功能
-YouTube Music 自動偵測、真正的音訊播放、雲端同步、讀音手動修正。不要把任何 AI API key 放進公開 repository 或前端 JavaScript。
+## 翻唱與搜尋
+- 自動搜尋 LRCLIB：先歌名+歌手，再歌名；自動選擇最接近的同名結果。不同版本可能誤配，使用搜尋結果手動選擇，或手動搜尋原唱歌手，再點選歌詞。會記住目前播放版本對應的歌詞。無歌詞時可自行匯入 LRC 或純文字。
+- 翻唱可能有不同前奏、速度和編曲。歌詞原文可沿用，時間軸需校準。版本依播放歌曲及影片 ID 建立；偏移、倍率、LRC 修改保存在此瀏覽器。正偏移表示提早顯示，倍率大於 1 表示時間軸更快。純文字無法自動逐句高亮，須補時間戳。
+- 選取的歌詞、版本與翻譯保存在目前瀏覽器 localStorage；不會跨裝置同步。v0.2 翻譯鍵沿用。舊的手動版本可在版本欄輸入原名稱切換並儲存，讓自動模式記住。
+- 預設假名開啟，第一次下載 Kuromoji 字典較慢；特殊唱法可能不正確。翻譯沿用 v0.2 的手動匯入與選用 AI Worker，並非預設自動翻譯。
 
-網站程式碼公開；不要把私人資料或未授權的完整歌詞上傳到 repository。API 可用性、資料授權與曲庫收錄受第三方限制。
+## 排錯
+- 等待連線：確認已安裝擴充、網站網址完全正確、兩頁重新整理、播放網頁版 YouTube Music 而不是其他 App。同時開多個 YT Music 分頁可能選到另一個播放來源，測試時建議只留一個。
+- 已連線但沒有歌詞：確認歌名、歌手、搜尋狀態，改搜原唱或手動匯入；API 曲庫與連線受第三方限制。
+- 有歌詞但不同步：確認有 LRC，並測試原唱；翻唱用偏移或版本設定校準。
+- 不想同步：取消勾選跟隨 YouTube Music，回到手動模式。網站不會操作實際音樂，也不會在手機自動偵測。
+- 擴充只讀取 music.youtube.com 的播放資訊，透過本機瀏覽器傳給你指定的 GitHub Pages 網頁；不需額外伺服器。網站會將歌名/歌手送 LRCLIB 搜尋。選用 AI 翻譯才會向設定的 Worker 傳送歌詞。
 
-參考：https://lrclib.net/docs / https://github.com/takuyaa/kuromoji.js
-
-## v0.2 更新
-- 上傳新版 index.html、app.js、style.css、kana-worker.js、README.md 至原 repository 根目錄，覆蓋舊檔；無需重建 Pages。重新整理頁面，確認左上角 v0.2。
-- 字典改為 Web Worker 背景處理；計時更新從每幀改為每 100ms，重複句讀音快取。首次下載字典仍需時間。
-- 指定歌手找不到時自動以歌名重搜。翻唱版本可沿用原唱文字並自訂版本名稱、時間偏移、倍率及每句 LRC 時間。版本在此瀏覽器儲存；再次輸入相同版本名並按切換即可恢復。倍率 1.05 代表歌詞時間軸進行得快 5%；正偏移代表歌詞提早顯示。若手動重寫 LRC，建議倍率 1、偏移調回 0。純文字歌詞也可補上所有句子的時間戳。此版不會自動取得翻唱時間戳。
-- 中文翻譯：複製 AI 指令與原文、貼回 JSON；也可部署選用 Worker 後一鍵翻譯。詳見 optional-ai/SETUP.md，該目錄無須上傳 GitHub Pages。
-- 仍未自動偵測 YouTube Music，也不會播放音樂。翻譯、時間設定仍只保存在當前瀏覽器。舊版儲存的逐行翻譯沿用。
+測試：JavaScript 語法檢查及模擬 DOM/歌詞 API 測試已通過；環境限制瀏覽器導航，尚未驗證真實 YouTube Music DOM、權限流程與實際 API 連線。初版擴充可能需依 YouTube Music 改版調整。
