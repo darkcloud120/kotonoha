@@ -2,3 +2,5 @@
 .version{margin:8px 0 12px}.version[open]{padding:10px;border:1px solid var(--edge);border-radius:12px}.version textarea{font-family:monospace;font-size:12px}.line{contain:layout style}.line .zh:empty{display:none}.line rt{user-select:none}button:disabled{pointer-events:none}@media(prefers-reduced-motion:reduce){.line{transition:none}}
 
 .sync-toggle{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--text)}#playing-info{overflow-wrap:anywhere}@media(max-width:720px){aside>.panel:nth-child(2){order:0}}
+
+.annotation-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:10px;color:var(--muted);font-size:12px}.annotation-bar button{font-size:12px;padding:4px 8px}.line ruby{ruby-position:over}
