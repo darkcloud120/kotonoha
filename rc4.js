@@ -1,5 +1,5 @@
 'use strict';
-const more=$('reader-options');$('reader-more').onclick=()=>{more.open=!more.open;};more.addEventListener('toggle',()=>{$('reader-more').textContent=more.open?'收起選項':'顯示選項';$('reader-more').setAttribute('aria-expanded',String(more.open));});
+const more=$('reader-options');$('reader-more').onclick=()=>{more.open=!more.open;};more.addEventListener('toggle',()=>{$('reader-more').textContent=more.open?'⚙ 收起選項':'⚙ 顯示選項';$('reader-more').setAttribute('aria-expanded',String(more.open));});
 $('settings-jump').onclick=()=>{more.open=true;more.scrollIntoView({block:'center',behavior:'smooth'});};
 $('retranslate').onclick=()=>{if(!aiState.config){$('ai-settings').open=true;$('ai-settings').scrollIntoView({block:'center',behavior:'smooth'});return;}if(readerMode==='off'){readerNote('請先開啟中文翻譯。');return;}startAI(true);};
 let seekRequest=0,seekTimer;
@@ -17,3 +17,7 @@ function sendTransport(action,t){
 }
 window.addEventListener('message',e=>{if(e.source!==window||e.origin!==location.origin||e.data?.type!=='kotonoha-seek-result-v1'||e.data.id!==seekRequest)return;clearTimeout(seekTimer);readerNote(e.data.ok?'已送出播放器指令。':'控制失敗：'+(e.data.error||'播放器未就緒'));});
 $('native-menu').onclick=()=>{if(document.documentElement.dataset.androidSeek==='1')window.prompt('kotonoha-native-menu-v1','');};
+
+$('ref-retry').onclick=()=>{if(song)findReference(song,generation,true);};
+
+$('ref-import').onclick=importReference;

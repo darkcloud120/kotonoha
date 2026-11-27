@@ -1,6 +1,7 @@
 'use strict';
 // A translation belongs to the exact ordered source lines, not to a video ID or timing.
 const aiSessionKey='kotonoha.v4.ai-session';
+const aiRememberKey='kotonoha.rc6.private-worker';
 const aiCachePrefix='kotonoha.v4.translation.';
 const aiState={config:null,timer:0,inflight:new Map(),memory:new Map(),starts:[],failed:new Set()};
 const aiStatus=m=>{$('ai-status').textContent=m;};
@@ -13,11 +14,11 @@ function showAIValues(values){ui['translation-text'].value=values.join('\n');set
 function currentSignature(){return aiSignature(lyricTexts());}
 function aiCurrentStatus(){const source=lyricTexts(), sig=aiSignature(source);if(!source.length){aiStatus('等待歌詞。');return;}if(aiState.inflight.has(sig)){aiStatus('AI 正在翻譯整首…');return;}if(anyTranslation()){aiStatus('已有翻譯；不會自動重複扣費。');return;}if(aiState.failed.has(sig)){aiStatus('此曲上次翻譯失敗，請手動重試。');return;}if(!aiState.config){aiStatus('尚未啟用：請設定 Worker 網址及私人密碼。');return;}aiStatus(aiState.config.auto?'等待自動翻譯…':'可按 AI 翻譯目前歌曲。');}
 function onAITrackLoaded(){clearTimeout(aiState.timer);aiCurrentStatus();if(typeof readerTrack==='function')readerTrack();else if(aiState.config?.auto&&song&&!song.demo&&lyricTexts().length&&!anyTranslation()){const sig=currentSignature();aiState.timer=setTimeout(()=>{if(currentSignature()===sig&&aiState.config?.auto&&!anyTranslation())startAI(false);},1500);}}
-function saveAIConfig(){const u=new URL($('ai-url').value.trim());if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw new Error('請輸入合法 HTTPS Worker 網址（無帳密、查詢參數或片段）');if(u.origin===location.origin||u.hostname.endsWith('.github.io'))throw new Error('這是歌詞網站，不是翻譯後端。請填入 Cloudflare Worker 網址（通常以 .workers.dev 結尾）。');const token=$('ai-token').value;if(token.length<24)throw new Error('私人存取密碼至少 24 字元');const c={url:u.href,token,auto:$('ai-auto').checked};aiState.config=c;try{localStorage.setItem('kotonoha.v2.ai-url',c.url);}catch{}try{if($('ai-remember').checked)sessionStorage.setItem(aiSessionKey,JSON.stringify(c));else sessionStorage.removeItem(aiSessionKey);}catch{aiStatus('瀏覽器無法保留設定，這次開頁仍可用。');}return c;}
+function saveAIConfig(){const u=new URL($('ai-url').value.trim());if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw new Error('請輸入合法 HTTPS Worker 網址（無帳密、查詢參數或片段）');if(u.origin===location.origin||u.hostname.endsWith('.github.io'))throw new Error('這是歌詞網站，不是翻譯後端。請填入 Cloudflare Worker 網址（通常以 .workers.dev 結尾）。');const token=$('ai-token').value;if(token.length<24)throw new Error('私人存取密碼至少 24 字元');const c={url:u.href,token,auto:$('ai-auto').checked};aiState.config=c;try{localStorage.setItem('kotonoha.v2.ai-url',c.url);}catch{}try{sessionStorage.removeItem(aiSessionKey);if($('ai-remember').checked)localStorage.setItem(aiRememberKey,JSON.stringify(c));else localStorage.removeItem(aiRememberKey);}catch{throw new Error('此裝置無法保存私人設定，請確認瀏覽器儲存權限。');}return c;}
 $('ai-save').onclick=()=>{try{saveAIConfig();aiState.failed.clear();onAITrackLoaded();}catch(e){aiStatus(e.message);}};
-$('ai-auto').onchange=()=>{if(!$('ai-auto').checked){clearTimeout(aiState.timer);if(aiState.config)aiState.config.auto=false;try{const old=JSON.parse(sessionStorage.getItem(aiSessionKey)||'null');if(old){old.auto=false;sessionStorage.setItem(aiSessionKey,JSON.stringify(old));}}catch{}aiCurrentStatus();}else aiStatus('按「儲存設定 / 啟用」確認自動翻譯及 API 費用。');};
-$('ai-disconnect').onclick=()=>{clearTimeout(aiState.timer);aiState.config=null;for(const r of aiState.inflight.values())r.controller.abort();$('ai-token').value='';$('ai-auto').checked=false;$('ai-remember').checked=false;try{sessionStorage.removeItem(aiSessionKey);}catch{}aiStatus('已停止並清除密碼。已送出的請求可能仍會計費。');};
-$('ai-remember').onchange=()=>{if(!$('ai-remember').checked)try{sessionStorage.removeItem(aiSessionKey);}catch{}};
+$('ai-auto').onchange=()=>{if(!$('ai-auto').checked){clearTimeout(aiState.timer);if(aiState.config)aiState.config.auto=false;try{const old=JSON.parse(localStorage.getItem(aiRememberKey)||'null');if(old){old.auto=false;localStorage.setItem(aiRememberKey,JSON.stringify(old));}}catch{}aiCurrentStatus();}else aiStatus('按「儲存設定 / 啟用」確認自動翻譯及 API 費用。');};
+$('ai-disconnect').onclick=()=>{clearTimeout(aiState.timer);aiState.config=null;for(const r of aiState.inflight.values())r.controller.abort();$('ai-token').value='';$('ai-auto').checked=false;$('ai-remember').checked=false;try{sessionStorage.removeItem(aiSessionKey);localStorage.removeItem(aiRememberKey);}catch{}aiStatus('已停止並清除密碼。已送出的請求可能仍會計費。');};
+$('ai-remember').onchange=()=>{if(!$('ai-remember').checked)try{sessionStorage.removeItem(aiSessionKey);localStorage.removeItem(aiRememberKey);}catch{}else aiStatus('按儲存設定後，密碼會保留在此裝置。');};
 async function startAI(manual){
  if(!song||!lyricTexts().length){aiStatus('請先載入歌詞。');return;}
  const source=lyricTexts(),sig=aiSignature(source),g=generation;let config=aiState.config;
@@ -39,5 +40,5 @@ async function startAI(manual){
  finally{clearTimeout(timer);aiState.inflight.delete(sig);if(currentSignature()!==sig&&aiState.config?.auto&&!anyTranslation()&&!aiState.inflight.has(currentSignature()))onAITrackLoaded();else if(!failed&&currentSignature()===sig&&!anyTranslation()&&aiState.config){const saved=readAITranslation(lyricTexts());if(saved.length&&!ui['translation-text'].value)showAIValues(saved);}}
 }
 $('ai-translate').onclick=()=>startAI(true);
-try{$('ai-url').value=localStorage.getItem('kotonoha.v2.ai-url')||'';const saved=JSON.parse(sessionStorage.getItem(aiSessionKey)||'null');if(saved){$('ai-url').value=saved.url;$('ai-token').value=saved.token;$('ai-auto').checked=!!saved.auto;$('ai-remember').checked=true;saveAIConfig();}}catch{}
+try{$('ai-url').value=localStorage.getItem('kotonoha.v2.ai-url')||'';const permanent=localStorage.getItem(aiRememberKey);const saved=JSON.parse(permanent||sessionStorage.getItem(aiSessionKey)||'null');if(saved){$('ai-url').value=saved.url;$('ai-token').value=saved.token;$('ai-auto').checked=!!saved.auto;$('ai-remember').checked=!!permanent;saveAIConfig();}}catch{}
 aiCurrentStatus();
