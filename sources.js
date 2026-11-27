@@ -1,6 +1,6 @@
 'use strict';
 // Original-song hints contain metadata only, never lyric text.
-const originalHints={'教室に青':'星街すいせい','W/X/Y':'Tani Yuuki','初めての恋が終わる時':'supercell','初めての恋が終わるとき':'supercell'};
+const originalHints={'Cotton Days':'Sizuk','教室に青':'星街すいせい','W/X/Y':'Tani Yuuki','初めての恋が終わる時':'supercell','初めての恋が終わるとき':'supercell'};
 const knownPages={'教室に青':[['歌ネット','https://www.uta-net.com/song/350749/'],['UtaTen（含假名）','https://utaten.com/lyric/hw24022875/']]};
 function originalHint(title){const n=normalized(title);return Object.entries(originalHints).find(([t])=>normalized(t)===n)?.[1]||'';}
 function sourceName(r){return r.source|| (r.id!=null?'LRCLIB':'自行匯入');}

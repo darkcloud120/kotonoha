@@ -21,3 +21,6 @@
 
 /* Metadata stays in raw data for existing translations and time axes, not in the reader. */
 .line.lyric-credit{display:none!important;}
+
+/* RC4 reader settings */
+.reader-title{display:flex;align-items:center;justify-content:space-between;font-weight:750;font-size:14px}.reader-title button{font-size:11px;padding:5px 8px}.reader-options{padding:9px 12px;background:#141620;border:1px solid var(--edge);border-radius:10px}.reader-options>summary{display:none}.reader-options:not([open]){display:none}.reader-options label{display:block;margin:7px 0}.reader-options input[type=range]{width:100%}.reader-options p{margin:6px 0}.reader-options .ghost{font-size:12px}.reader-tools .quick-actions button{white-space:nowrap}.focus-mode .reader-title,.focus-mode .reader-options{display:none}.track-info{min-width:0}.track h1{overflow-wrap:anywhere}.line.timed{cursor:pointer}.line.timed:focus-visible{outline:2px solid var(--accent)}@media(max-width:720px){.reader-tools{padding:5px 0}.reader-options{padding:7px}.header-actions{gap:3px}.player .track-info{flex:1;min-width:110px}.player .track h1{font-size:clamp(18px,5vw,24px)}}
