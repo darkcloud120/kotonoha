@@ -8,6 +8,9 @@ function songIdentity(s){return JSON.stringify([s.videoId||'',s.title,s.artist])
 function mappingKey(k){return 'kotonoha.v3.map.'+k;}
 function getMapping(k){try{return JSON.parse(localStorage.getItem(mappingKey(k))||'null');}catch{return null;}}
 function putMapping(k,m){try{localStorage.setItem(mappingKey(k),JSON.stringify(m));}catch{}}
+const autoCacheKey='kotonoha.v101.autoCache';
+function readAutoCache(k){try{const e=JSON.parse(localStorage.getItem(autoCacheKey)||'{}')[k];if(e&&Date.now()-e.at<30*86400000)return e.record;}catch{}}
+function writeAutoCache(k,record,s,queries){if(!chooseAutoRecord([record],s,queries,{strict:true}))return;try{const data=JSON.parse(localStorage.getItem(autoCacheKey)||'{}');data[k]={record,at:Date.now()};const keys=Object.keys(data).sort((a,b)=>data[b].at-data[a].at);for(const x of keys.slice(40))delete data[x];localStorage.setItem(autoCacheKey,JSON.stringify(data));}catch{}}
 function disableAutoSync(){auto.checked=false;changeAuto();}
 function changeAuto(){try{localStorage.setItem('kotonoha.v3.auto',auto.checked?'on':'off');}catch{}syncRequest++;requestController?.abort();searchGeneration++;loadedKey='';remoteKey='';selectedRecord=null;setPlaying(false);updateControls();retry.disabled=!syncLocked();if(!auto.checked){syncStatus.textContent='手動模式';ui['track-status'].textContent='手動模式：音樂開始時啟動歌詞計時器。';}else if(syncLocked())receive(remote);else syncStatus.textContent='等待擴充功能連線…';}
 auto.addEventListener('change',changeAuto);
@@ -34,32 +37,43 @@ function titleQueries(t,artist=''){
 }
 function hasTimedLyrics(r){const rows=parseLyrics(r.syncedLyrics||'');return rows.some(x=>x.text&&Number.isFinite(x.t));}
 function sourceNoise(r){const rows=parseLyrics(r.syncedLyrics||r.plainLyrics||'');return rows.filter(l=>isCredit(l.text)||displayLyric(l.text)!==l.text).length;}
-function cleanArtist(value){return String(value||'').normalize('NFKC').replace(/\s*(?:[-–—]\s*Topic|Ch\.?\s*(?:hololive.*)?|Official(?:\s+Channel)?|公式チャンネル)\s*$/iu,'').trim();}
-function artistMatches(a,b){a=normalized(cleanArtist(a));b=normalized(cleanArtist(b));return !!a&&!!b&&(a===b||(Math.min(a.length,b.length)>=4&&(a.includes(b)||b.includes(a))));}
+function cleanArtist(value){return String(value||'').normalize('NFKC').replace(/\s*(?:[-–—]\s*Topic|Ch\.?\s*(?:hololive.*)?|Official(?:\s+Channel)?|公式チャンネル|Channel)\s*$/iu,'').trim();}
+const artistAliases=[['星街すいせい','Hoshimachi Suisei','Suisei','Suisei Channel'],['博衣こより','Hakui Koyori','Koyori'],['音乃瀬奏','Otonose Kanade','Kanade'],['ハコス・ベールズ','Hakos Baelz','Baelz'],['いろはにほへっと あやふぶみ','Irohanihohetto Ayafubumi']];
+function artistKey(a){const n=normalized(cleanArtist(a));const group=artistAliases.find(g=>g.some(v=>normalized(cleanArtist(v))===n));return group?normalized(group[0]):n;}
+function artistMatches(a,b){a=artistKey(a);b=artistKey(b);return !!a&&!!b&&(a===b||(Math.min(a.length,b.length)>=5&&(a.includes(b)||b.includes(a))));}
 function artistCandidates(s,queries){
- const raw=String(s.title||'').normalize('NFKC'), channel=cleanArtist(s.artist), out=[];
+ const raw=String(s.title||'').normalize('NFKC').replace(/\s*\(\s*official\s*\)\s*$/iu,''), channel=cleanArtist(s.artist), out=[];
  const add=x=>{x=cleanArtist(x);if(x&&x.length<=100&&!out.some(y=>normalized(y)===normalized(x)))out.push(x);};
  const parts=raw.replace(/[【\[][^】\]]*(?:MV|music video|official|cover|歌ってみた|配信中)[^】\]]*[】\]]/giu,' ').split(/\s*[|｜]+\s*|\s+[-–—/]\s+/u).map(x=>x.trim()).filter(Boolean);
  const first=normalized(queries[0]);
  if(parts.length===2){const pos=parts.findIndex(x=>normalized(x)===first);if(pos>=0){const other=parts[1-pos];if(!/主題歌|アニメ|covered|歌ってみた|music video|official|lyrics|配信/iu.test(other)&&(!channel||artistMatches(other,channel)||/\|\|/.test(raw)))add(other);}}
  if(first==='psycho'&&(/hakos\s*baelz|ハコス[・･ ]?ベールズ/iu.test(raw+' '+channel))){add('Hakos Baelz');add('ハコス・ベールズ');}
- add(channel);for(const q of queries.slice(0,2))add(originalHint(q));
+ add(channel);for(const q of queries.slice(0,2))add(originalHint(q));const group=artistAliases.find(g=>g.some(a=>out.some(b=>artistKey(a)===artistKey(b))));if(group)for(const a of group)add(a);
  return out.slice(0,4);
 }
 function preferredArtist(s,queries){const hint=originalHint(queries[0]||'');return hint||artistCandidates(s,queries)[0]||'';}
-function scoreRecord(r,s,queries){const names=queries.map(normalized),title=normalized(r.trackName||r.name);const exact=names.includes(title);const titleRank=names.indexOf(title);const artists=artistCandidates(s,queries);const sameArtist=artists.some(a=>artistMatches(a,r.artistName));const delta=s.duration&&r.duration?Math.abs(s.duration-r.duration):999;const original=originalHint(queries[0]||'');const isOriginal=artistMatches(original,r.artistName);const noise=sourceNoise(r);return {exact,sameArtist,delta,isOriginal,noise,score:(exact?200:0)+(titleRank===0?300:Math.max(0,100-titleRank*25))+(isOriginal?110:0)+(sameArtist?100:0)+(hasTimedLyrics(r)?80:0)+Math.max(0,30-delta/2)-Math.min(45,noise*3)};}
-function chooseAutoRecord(records,s,queries){
- const first=normalized(queries[0]),hint=originalHint(queries[0]||'');
- const firstRecords=records.filter(r=>normalized(r.trackName||r.name)===first||!!hint&&queries.some(q=>normalized(q)===normalized(r.trackName||r.name)&&originalHint(q)===hint));
- const ranked=rs=>rs.sort((a,b)=>scoreRecord(b,s,queries).score-scoreRecord(a,s,queries).score);
- const matched=firstRecords.filter(r=>{const m=scoreRecord(r,s,queries);return m.sameArtist||m.isOriginal;});
- if(matched.length)return ranked(matched)[0];
- const fallback=records.filter(r=>{const m=scoreRecord(r,s,queries);return m.exact&&m.sameArtist&&m.delta<=8;});
- if(new Set(fallback.map(r=>normalized(r.trackName||r.name))).size===1)return ranked(fallback)[0];
- // Generic titles (e.g. PSYCHO) require an artist match; duration alone is insufficient.
- if(hint||/^[a-z0-9]{1,12}$/i.test(first)||!first)return undefined;
- const close=firstRecords.filter(r=>scoreRecord(r,s,queries).delta<=Math.max(8,(Number(s.duration)||0)*.08));
- if(close.length&&new Set(firstRecords.map(r=>normalized(r.artistName)).filter(Boolean)).size===1)return ranked(close)[0];
+// Memoize expensive lyric parsing; the same result is ranked repeatedly during a search.
+const recordQuality=new WeakMap();
+function qualityOf(r){let q=recordQuality.get(r);if(!q){q={timed:hasTimedLyrics(r),noise:sourceNoise(r)};recordQuality.set(r,q);}return q;}
+function scoreRecord(r,s,queries){const names=queries.map(normalized),title=normalized(r.trackName||r.name);const exact=names.includes(title);const titleRank=names.indexOf(title);const artists=artistCandidates(s,queries);const sameArtist=artists.some(a=>artistMatches(a,r.artistName));const knownDuration=Number(s.duration)>0&&Number(r.duration)>0;const delta=knownDuration?Math.abs(s.duration-r.duration):Infinity;const original=originalHint(queries[0]||'');const isOriginal=artistMatches(original,r.artistName);const {timed,noise}=qualityOf(r);return {exact,titleRank,sameArtist,delta,knownDuration,isOriginal,noise,timed,score:(exact?200:0)+(titleRank===0?220:Math.max(0,100-titleRank*25))+(isOriginal?65:0)+(sameArtist?55:0)+(timed?45:0)+(knownDuration?Math.max(-50,85-delta*3):0)-Math.min(35,noise*2)};}
+function chooseAutoRecord(records,s,queries,{strict=false}={}){
+ const first=normalized(queries[0]),hint=originalHint(queries[0]||'');if(!first)return;
+ const ranked=records.map(r=>({r,...scoreRecord(r,s,queries)})).filter(m=>m.exact).sort((a,b)=>b.score-a.score);
+ const primary=ranked.filter(m=>m.titleRank===0||!!hint&&originalHint(m.r.trackName||m.r.name)===hint);
+ // A known artist is strong evidence. Do not discard valid lyrics just because a cover differs in duration.
+ const matched=primary.filter(m=>m.sameArtist||m.isOriginal);
+ if(matched.length){const best=matched[0];if(!strict||(best.timed&&best.delta<=Math.max(8,Number(s.duration)*.025)))return best.r;}
+ if(strict)return;
+ // Only use a title-only fallback when duration is known and ambiguity is low.
+ const generic=/^[a-z0-9]{1,12}$/i.test(first);
+ const tolerance=generic?3:Math.min(12,Math.max(5,Number(s.duration)*.035));
+ const close=primary.filter(m=>m.knownDuration&&m.delta<=tolerance).sort((a,b)=>a.delta-b.delta||b.score-a.score);
+ if(close.length){const nearest=close[0];const competing=close.filter(m=>m.delta<=nearest.delta+(generic?3:5));const groups=new Set(competing.map(m=>artistKey(m.r.artistName)||'?'));
+  // A short English title with no corroborating artist is especially ambiguous.
+  if(!generic&&groups.size===1)return competing.sort((a,b)=>b.score-a.score)[0].r;
+ }
+ const secondary=ranked.filter(m=>m.titleRank>0&&(m.sameArtist||m.isOriginal)&&m.delta<=8);
+ if(new Set(secondary.map(m=>normalized(m.r.trackName||m.r.name))).size===1)return secondary[0]?.r;
  return undefined;
 }
 function versionFor(s){return `${s.source==='youtube'?'YouTube':'YT Music'} · ${s.title} · ${s.artist}${s.videoId?' ['+s.videoId+']':''}`;}
@@ -68,10 +82,10 @@ function activateRecord(record,manual=false){if(!syncLocked()){loadSong(record);
 function selectSyncRecord(record){if(syncLocked()){syncRequest++;requestController?.abort();activateRecord(record,true);ui['search-status'].textContent='已選擇並記住目前播放版本的歌詞。';}else loadSong(record);}
 function rememberSyncProfile(){if(syncLocked()&&loadedKey===remoteKey&&selectedRecord)putMapping(remoteKey,{record:selectedRecord,profile:versionName||versionFor(remote)});}
 function resultsList(records){ui.results.replaceChildren();for(const r of records.slice(0,25)){const b=document.createElement('button');b.className='result';b.textContent=r.trackName||r.name||'未知歌曲';const small=document.createElement('small');small.textContent=[r.artistName,r.albumName,timeString(Number(r.duration)||0),hasTimedLyrics(r)?'有同步':'純文字',sourceName(r)].filter(Boolean).join(' · ');b.append(small);b.onclick=()=>selectSyncRecord(r);ui.results.append(b);}}
-async function findRemote(s,force=false){const k=remoteKey,g=++syncRequest,sg=++searchGeneration;requestController?.abort();manualSearchController?.abort();requestController=new AbortController();const controller=requestController;const valid=()=>g===syncRequest&&sg===searchGeneration&&k===remoteKey&&auto.checked;ui.query.value=titleQueries(s.title,s.artist)[0]||s.title;ui.artist.value=preferredArtist(s,titleQueries(s.title,s.artist))||s.artist;sourceLinks(ui.query.value,ui.artist.value);$('import-current').disabled=false;ui.results.replaceChildren();ui['search-status'].textContent='正在自動搜尋歌詞…';const saved=!force&&(getMapping(k)?.record||syncCache.get(k));if(saved){activateRecord(saved);ui['search-status'].textContent='已載入上次使用的歌詞。';return;}
+async function findRemote(s,force=false){const k=remoteKey,g=++syncRequest,sg=++searchGeneration;requestController?.abort();manualSearchController?.abort();requestController=new AbortController();const controller=requestController;const valid=()=>g===syncRequest&&sg===searchGeneration&&k===remoteKey&&auto.checked;ui.query.value=titleQueries(s.title,s.artist)[0]||s.title;ui.artist.value=preferredArtist(s,titleQueries(s.title,s.artist))||s.artist;sourceLinks(ui.query.value,ui.artist.value);$('import-current').disabled=false;ui.results.replaceChildren();ui['search-status'].textContent='正在自動搜尋歌詞…';const saved=!force&&(getMapping(k)?.record||syncCache.get(k)||readAutoCache(k));if(saved){activateRecord(saved);ui['search-status'].textContent='已載入上次使用的歌詞。';return;}
  // Never show the previous track's lyrics under a new track.
  loadedKey='';selectedRecord=null;loadSong({trackName:s.title,artistName:s.artist,plainLyrics:''});ui['track-status'].textContent='正在搜尋目前播放的歌曲…';
- try{const q=titleQueries(s.title,s.artist);const {records:ranked,errors}=await searchSources(s,q,controller.signal,m=>{if(valid())ui['search-status'].textContent=m;});if(!valid())return;resultsList(ranked);const best=chooseAutoRecord(ranked,s,q);if(best){syncCache.set(k,best);if(syncCache.size>50)syncCache.delete(syncCache.keys().next().value);activateRecord(best);if(force&&getMapping(k)){ui['search-status'].textContent='已重新搜尋，原手動對應仍保留。';}ui['search-status'].textContent='已自動載入 '+sourceName(best)+(hasTimedLyrics(best)?' 同步歌詞。':' 純文字歌詞（無時間戳）。');}else{ui['search-status'].textContent=(ranked.length?'沒有確定的同名歌曲，請從搜尋結果選擇。':'所有已搜尋曲庫均未找到確定歌詞，請使用下方連結或匯入。')+(errors.length?' 部分來源連線失敗：'+errors.join('；'):'');ui['track-status'].textContent='未找到可確認的歌詞，等待手動選擇。';}
+ try{const q=titleQueries(s.title,s.artist);const {records:ranked,errors}=await searchSources(s,q,controller.signal,m=>{if(valid())ui['search-status'].textContent=m;});if(!valid())return;resultsList(ranked);const best=chooseAutoRecord(ranked,s,q);if(best){syncCache.set(k,best);writeAutoCache(k,best,s,q);if(syncCache.size>50)syncCache.delete(syncCache.keys().next().value);activateRecord(best);if(force&&getMapping(k)){ui['search-status'].textContent='已重新搜尋，原手動對應仍保留。';}ui['search-status'].textContent='已自動載入 '+sourceName(best)+(hasTimedLyrics(best)?' 同步歌詞。':' 純文字歌詞（無時間戳）。');}else{ui['search-status'].textContent=(ranked.length?'沒有確定的同名歌曲，請從搜尋結果選擇。':'所有已搜尋曲庫均未找到確定歌詞，請使用下方連結或匯入。')+(errors.length?' 部分來源連線失敗：'+errors.join('；'):'');ui['track-status'].textContent='未找到可確認的歌詞，等待手動選擇。';}
 
  }catch(e){if(valid()){ui['search-status'].textContent='自動搜尋失敗：'+e.message+'。可按重新搜尋。';ui['track-status'].textContent='歌詞載入失敗。';}}
 }
