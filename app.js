@@ -21,7 +21,7 @@ let kanaWorker=null,kanaRequest=0;const kanaPending=new Map(),kanaCache=new Map(
 function kanaStatus(message){ui['kana-status'].textContent=message;$('kana-summary').textContent='假名：'+message;}
 function stopKanaWorker(reason){const worker=kanaWorker;kanaWorker=null;worker?.terminate();for(const p of kanaPending.values()){clearTimeout(p.timer);p.reject(new Error(reason));}kanaPending.clear();}
 function getReadings(texts){
- if(!kanaWorker){kanaWorker=new Worker('kana-worker.js?v=100rc7');const worker=kanaWorker;worker.onmessage=({data})=>{if(worker!==kanaWorker)return;if(Number.isFinite(data.progress)){if(kanaPending.size&&lines.some(l=>kanji.test(l.text)))kanaStatus(`字典載入 ${data.progress}/${data.total}${data.source?' · '+data.source:''}…`);return;}const p=kanaPending.get(data.id);if(!p)return;clearTimeout(p.timer);kanaPending.delete(data.id);data.error?p.reject(new Error(data.error)):p.resolve(data.tokens);};worker.onerror=e=>{if(worker===kanaWorker)stopKanaWorker(e.message||'日文字典背景程序失敗');};}
+ if(!kanaWorker){kanaWorker=new Worker('kana-worker.js?v=100final1');const worker=kanaWorker;worker.onmessage=({data})=>{if(worker!==kanaWorker)return;if(Number.isFinite(data.progress)){if(kanaPending.size&&lines.some(l=>kanji.test(l.text)))kanaStatus(`字典載入 ${data.progress}/${data.total}${data.source?' · '+data.source:''}…`);return;}const p=kanaPending.get(data.id);if(!p)return;clearTimeout(p.timer);kanaPending.delete(data.id);data.error?p.reject(new Error(data.error)):p.resolve(data.tokens);};worker.onerror=e=>{if(worker===kanaWorker)stopKanaWorker(e.message||'日文字典背景程序失敗');};}
  const id=++kanaRequest;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>stopKanaWorker('字典下載逾時，請重試'),100000);kanaPending.set(id,{resolve,reject,timer});try{kanaWorker.postMessage({id,texts});}catch(e){stopKanaWorker(e.message);}});
 }
 // Source-provided readings: keep raw lyrics for existing cache/translation identity.
@@ -38,7 +38,7 @@ function renderSourceLine(l,withDictionary=false){
  if(manual)return annotated(l.jp,manual,display);
  const ai=typeof aiCorrectedTokens==='function'&&aiCorrectedTokens(display);
  const dictionary=withDictionary?normalSpans(display,kanaCache.get(display)):[];
- const spans=mergeSpans(display,[ruleSpans(display,song,"song"),inlineSpans(l.text),referenceFor(display),ruleSpans(display,song,"common"),normalSpans(display,ai),dictionary]);
+ const spans=mergeSpans(display,[inlineSpans(l.text),referenceFor(display),ruleSpans(display,song,"song"),ruleSpans(display,song,"common"),normalSpans(display,ai),dictionary]);
  const frag=document.createDocumentFragment();let pos=0,missing=false;
  for(const r of spans){const gap=display.slice(pos,r.start);if(kanji.test(gap))missing=true;frag.append(document.createTextNode(gap));addRuby(frag,display.slice(r.start,r.end),r.reading);pos=r.end;}
  const tail=display.slice(pos);if(kanji.test(tail))missing=true;frag.append(document.createTextNode(tail));l.jp.replaceChildren(frag);return !missing;

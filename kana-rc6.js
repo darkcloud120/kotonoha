@@ -11,6 +11,10 @@ function normalSpans(text,tokens){const out=[];let pos=0;for(const t of tokens||
 function ruleSpans(text,record,kind="all"){const out=[];const add=(re,reading)=>{for(const m of text.matchAll(re))out.push({start:m.index,end:m.index+m[0].length,reading:typeof reading==='function'?reading(m[0]):reading});};
  // No overrides in counters such as 十一人 or compounds 一人称/一人前.
  if(kind!=="song")add(/(?<![一二三四五六七八九十百千万億兆零〇0-9０-９第])(?:一人|二人)(?![称前組])/gu,b=>b==='一人'?'ひとり':'ふたり');
+ if(kind!=="song"){
+  add(/(?<![\p{Script=Han}])二十歳(?![\p{Script=Han}])/gu,'はたち');
+  add(/(?<![\p{Script=Han}])一昨日(?![\p{Script=Han}])/gu,'おととい');
+ }
  const title=String(record?.trackName||'').normalize('NFKC');
  if(kind!=="common"&&/^星降る海(?:$|\s*[-(（～~])/u.test(title))add(/(?<![\p{Script=Han}])宙(?![\p{Script=Han}])/gu,'そら');
  if(kind!=="common"&&/^キラキラだとか夢だとか(?:$|[\s~～(（])/u.test(title))add(/(?<=["“「『])音楽(?=["”」』])|音楽(?=["”」』]?\s*という)/gu,'きずな');
@@ -27,7 +31,7 @@ function mergeSpans(text,groups){const out=[];const valid=s=>Number.isInteger(s.
 function referenceFor(text){const data=refReadings.get(compactKanaText(text));if(!Array.isArray(data))return [];const chars=[];for(let i=0;i<text.length;i++)if(!/\s/u.test(text[i]))chars.push(i);return data.map(s=>({start:chars[s.start],end:chars[s.end-1]+1,reading:s.reading})).filter(s=>Number.isInteger(s.start)&&Number.isInteger(s.end));}
 // Match punctuation-insensitive sequences of up to three lines in each version.
 // Preserve original line offsets for display and never rewrite the timed text.
-function matchChars(text){const chars=[],indices=[];for(let i=0;i<text.length;){const ch=String.fromCodePoint(text.codePointAt(i)),at=i;i+=ch.length;if(/[\s\p{P}]/u.test(ch))continue;for(const c of ch.normalize('NFKC')){chars.push(c);indices.push({start:at,end:i});}}return {key:chars.join(''),indices};}
+function matchChars(text){const chars=[],indices=[];for(const m of text.matchAll(/\P{M}\p{M}*|\p{M}+/gu)){const ch=m[0],at=m.index;for(const c of ch.normalize('NFKC')){if(/[\s\p{P}]/u.test(c))continue;chars.push(c);indices.push({start:at,end:at+ch.length});}}return {key:chars.join(''),indices};}
 function referenceMap(rawRows,currentRows){
  const current=currentRows.map(raw=>{const text=displayLyric(raw);return {text,...matchChars(text)};}).filter(x=>x.key);
  const other=rawRows.map(raw=>{const text=displayLyric(raw);return {text,spans:inlineSpans(raw),...matchChars(text)};}).filter(x=>x.key);
@@ -50,8 +54,9 @@ function referenceMap(rawRows,currentRows){
  if(matched.size<Math.min(3,distinct.size)||matched.size<Math.ceil(distinct.size*.55))return new Map();
  return new Map([...pending].filter(([,v])=>v.length));
 }
+function combineReferenceMaps(maps){const all=new Map(),out=new Map();for(const m of maps)for(const [key,spans] of m){if(!all.has(key))all.set(key,[]);for(const span of spans){const list=all.get(key);if(!list.some(x=>x.start===span.start&&x.end===span.end&&x.reading===span.reading))list.push(span);}}for(const [key,spans] of all){const valid=spans.filter(a=>!spans.some(b=>a!==b&&a.start<b.end&&b.start<a.end));if(valid.length)out.set(key,valid.sort((a,b)=>a.start-b.start));}return out;}
 function referenceRows(r){return [...parseLyrics(r.syncedLyrics||'').map(l=>l.text),...parseLyrics(r.plainLyrics||'').map(l=>l.text)];}
-async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const url=$('ref-link');const known=normalized(title)===normalized('おにけもだんす')?'https://utaten.com/lyric/mi22092863/':title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>kanji.test(l.text))){label.textContent='等待日文歌曲';return;}
+async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const url=$('ref-link');const known=normalized(title)==='psycho'&&/hakos\s*baelz|ハコス[・･ ]?ベールズ/iu.test(artist)?'https://utaten.com/lyric/hw23050921/':normalized(title)===normalized('おにけもだんす')?'https://utaten.com/lyric/mi22092863/':title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>kanji.test(l.text))){label.textContent='等待日文歌曲';return;}
  const key=JSON.stringify([refKey(record),lines.map(l=>l.text)]),raw=lines.filter(l=>!l.credit).map(l=>l.text);const use=(map,status)=>{if(!valid())return;refReadings.clear();for(const [k,v] of map)refReadings.set(k,v);label.textContent=status;repaintReference();};
  try{const stored=JSON.parse(localStorage.getItem(manualRefPrefix+key)||'null');if(Array.isArray(stored)){const m=new Map(stored);use(m,`已載入自訂參考讀音 ${m.size} 句`);return;}}catch{}
  if(!force&&refCache.has(key)){const m=refCache.get(key);use(m,m.size?`其他歌詞版本：已對照 ${m.size} 句`:'未找到可對照的標註版本');return;}
@@ -59,7 +64,7 @@ async function findReference(record,g,force=false){refAbort?.abort();refAbort=nu
  async function json(url,ms){const res=await fetch(url,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(ms)])});if(!res.ok)throw Error('HTTP '+res.status);return res.json();}
  try{const v=await json('https://lrclib.net/api/search?'+new URLSearchParams({track_name:title}),9000);if(Array.isArray(v))records=v.filter(r=>normalized(r.trackName||'')===normalized(title));}catch{errors++;}
  if(!valid()||controller.signal.aborted)return;
- let best=new Map();const collect=()=>{for(const r of records){const m=referenceMap(referenceRows(r),raw);if([...m.values()].flat().length>[...best.values()].flat().length)best=m;}};collect();
+ let best=new Map();const candidates=[];const collect=()=>{for(const r of records){const m=referenceMap(referenceRows(r),raw);if(m.size)candidates.push(m);}best=combineReferenceMaps(candidates);};collect();
  // Existing API only; no direct scraping or external credential transmission.
  if(best.size<new Set(raw.filter(x=>kanji.test(x)).map(x=>compactKanaText(displayLyric(x)))).size*.8){try{const q=artist?{title,artist,fast:'1'}:{Q:title,fast:'1'};const v=await json('https://api.liriqo-alfarrizi.my.id/v1/lyrics?'+new URLSearchParams(q),18000);records=liriqoRecords(v,[title]);collect();}catch{errors++;}}
  if(!valid()||controller.signal.aborted)return;if(!errors||best.size){refCache.set(key,best);if(refCache.size>40)refCache.delete(refCache.keys().next().value);}use(best,best.size?`其他歌詞版本：已對照 ${best.size} 句${errors?'（部分來源未連線）':''}`:errors?'未找到可對照版本（部分來源未連線）':'未找到可對照的標註版本；使用字典與規則');
