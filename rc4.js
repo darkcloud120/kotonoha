@@ -21,3 +21,5 @@ $('native-menu').onclick=()=>{if(document.documentElement.dataset.androidSeek===
 $('ref-retry').onclick=()=>{if(song)findReference(song,generation,true);};
 
 $('ref-import').onclick=importReference;
+
+$('ref-text').addEventListener('paste',e=>{const html=e.clipboardData?.getData('text/html');if(!html||html.length>500000)return;const converted=rubyClipboardText(html);if(!converted)return;e.preventDefault();const el=e.currentTarget;el.setRangeText(converted,el.selectionStart,el.selectionEnd,'end');$('ref-status').textContent='已讀取剪貼簿的假名格式；按比對並儲存讀音。';});

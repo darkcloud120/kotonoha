@@ -14,13 +14,44 @@ function ruleSpans(text,record,kind="all"){const out=[];const add=(re,reading)=>
  const title=String(record?.trackName||'').normalize('NFKC');
  if(kind!=="common"&&/^星降る海(?:$|\s*[-(（～~])/u.test(title))add(/(?<![\p{Script=Han}])宙(?![\p{Script=Han}])/gu,'そら');
  if(kind!=="common"&&/^キラキラだとか夢だとか(?:$|[\s~～(（])/u.test(title))add(/(?<=["“「『])音楽(?=["”」』])|音楽(?=["”」』]?\s*という)/gu,'きずな');
+ // Track-scoped pronunciation dictionary, not a copy of the song lyrics.
+ if(kind!=="common"&&/^おにけもだんす$/u.test(title.trim())){
+  const overrides={'電気通信網':'いんたーねっと','超課金伝書鳩':'すーぱーちゃっと','御人':'おひと','狛犬':'こまいぬ','狐':'きつね','一二三':'ひふみ','物怪':'もののけ','怪物':'もののけ','偶像':'あいどる','神仏':'かみほとけ','仮想':'ばーちゃる','現世':'りある','天晴':'あっぱれ','大好':'だいす','凸':'とつ'};
+  for(const [word,reading] of Object.entries(overrides))add(new RegExp(word==='大好'?'大好(?=こ)':word,'gu'),reading);
+  add(/(?<![\p{Script=Han}])余(?![\p{Script=Han}])/gu,'よ');
+  add(/(?<!大)好(?=こ|る)/gu,'す');
+ }
  return out;
 }
 function mergeSpans(text,groups){const out=[];const valid=s=>Number.isInteger(s.start)&&Number.isInteger(s.end)&&s.start>=0&&s.end<=text.length&&s.start<s.end&&kanji.test(text.slice(s.start,s.end))&&/^[ぁ-ゖー]+$/u.test(s.reading);for(const group of groups)for(const input of group||[]){if(!valid(input))continue;let s={...input};for(const h of out.filter(x=>x.start<s.end&&s.start<x.end).sort((a,b)=>a.start-b.start)){if(h.start<=s.start&&h.end>=s.end){s=null;break;}if(h.start===s.start&&h.end<s.end){const word=text.slice(h.start,h.end);const alternatives=[h.reading,...(word==='一人'?['いちにん']:word==='二人'?['ににん']:[])];const r=alternatives.find(r=>s.reading.startsWith(r));if(!r){s=null;break;}s={start:h.end,end:s.end,reading:s.reading.slice(r.length)};}else if(h.end===s.end&&h.start>s.start&&s.reading.endsWith(h.reading)){s={start:s.start,end:h.start,reading:s.reading.slice(0,-h.reading.length)};}else{s=null;break;}}if(s&&valid(s)&&!out.some(x=>x.start<s.end&&s.start<x.end))out.push(s);}return out.sort((a,b)=>a.start-b.start);}
 function referenceFor(text){const data=refReadings.get(compactKanaText(text));if(!Array.isArray(data))return [];const chars=[];for(let i=0;i<text.length;i++)if(!/\s/u.test(text[i]))chars.push(i);return data.map(s=>({start:chars[s.start],end:chars[s.end-1]+1,reading:s.reading})).filter(s=>Number.isInteger(s.start)&&Number.isInteger(s.end));}
-function referenceMap(rawRows,currentRows){const current=new Set(currentRows.map(x=>compactKanaText(displayLyric(x))).filter(Boolean));const other=new Set(rawRows.map(x=>compactKanaText(displayLyric(x))).filter(Boolean));const shared=[...current].filter(x=>other.has(x)).length;if(shared<Math.min(3,current.size)||shared<Math.ceil(current.size*.55))return new Map();const map=new Map(),conflicts=new Set();for(const raw of rawRows){const text=displayLyric(raw),key=compactKanaText(text);if(!current.has(key))continue;const spans=inlineSpans(raw).map(s=>({start:compactKanaText(text.slice(0,s.start)).length,end:compactKanaText(text.slice(0,s.end)).length,reading:s.reading}));if(!spans.length)continue;const prev=map.get(key)||[];for(const s of spans){const id=JSON.stringify([key,s.start,s.end]);if(conflicts.has(id))continue;const match=prev.find(x=>x.start===s.start&&x.end===s.end);if(match&&match.reading!==s.reading){conflicts.add(id);prev.splice(prev.indexOf(match),1);}else if(!match)prev.push(s);}map.set(key,prev);}return new Map([...map].filter(([,v])=>v.length));}
+// Match punctuation-insensitive sequences of up to three lines in each version.
+// Preserve original line offsets for display and never rewrite the timed text.
+function matchChars(text){const chars=[],indices=[];for(let i=0;i<text.length;){const ch=String.fromCodePoint(text.codePointAt(i)),at=i;i+=ch.length;if(/[\s\p{P}]/u.test(ch))continue;for(const c of ch.normalize('NFKC')){chars.push(c);indices.push({start:at,end:i});}}return {key:chars.join(''),indices};}
+function referenceMap(rawRows,currentRows){
+ const current=currentRows.map(raw=>{const text=displayLyric(raw);return {text,...matchChars(text)};}).filter(x=>x.key);
+ const other=rawRows.map(raw=>{const text=displayLyric(raw);return {text,spans:inlineSpans(raw),...matchChars(text)};}).filter(x=>x.key);
+ if(!current.length||!other.length)return new Map();
+ const windows=rows=>{const out=new Map();for(let i=0;i<rows.length;i++){let key='';const items=[];for(let j=i;j<Math.min(i+3,rows.length);j++){items.push({row:rows[j],index:j,offset:Array.from(key).length});key+=rows[j].key;if(!out.has(key))out.set(key,[]);out.get(key).push(items.slice());}}return out;};
+ const cw=windows(current),ow=windows(other),covered=new Set(),pending=new Map(),conflicts=new Set();
+ const insert=(key,s)=>{const list=pending.get(key)||[];const id=JSON.stringify([key,s.start,s.end]);if(conflicts.has(id))return;const prev=list.find(x=>x.start===s.start&&x.end===s.end);if(prev&&prev.reading!==s.reading){conflicts.add(id);list.splice(list.indexOf(prev),1);}else if(!prev)list.push(s);pending.set(key,list);};
+ for(const [key,groups] of cw){const refs=ow.get(key);if(!refs)continue;
+  for(const group of groups){for(const part of group)covered.add(part.index);
+   for(const ref of refs)for(const entry of ref)for(const span of entry.row.spans){
+    const ids=entry.row.indices.map((v,i)=>v.start>=span.start&&v.end<=span.end?i:-1).filter(i=>i>=0);if(!ids.length)continue;
+    const start=entry.offset+ids[0],end=entry.offset+ids.at(-1)+1;
+    const dest=group.find(v=>start>=v.offset&&end<=v.offset+v.row.indices.length);if(!dest)continue;
+    const startRaw=dest.row.indices[start-dest.offset].start,endRaw=dest.row.indices[end-dest.offset-1].end;
+    const text=dest.row.text,k=compactKanaText(text);insert(k,{start:compactKanaText(text.slice(0,startRaw)).length,end:compactKanaText(text.slice(0,endRaw)).length,reading:span.reading});
+   }
+  }
+ }
+ const distinct=new Set(current.map(x=>x.key)),matched=new Set([...covered].map(i=>current[i].key));
+ if(matched.size<Math.min(3,distinct.size)||matched.size<Math.ceil(distinct.size*.55))return new Map();
+ return new Map([...pending].filter(([,v])=>v.length));
+}
 function referenceRows(r){return [...parseLyrics(r.syncedLyrics||'').map(l=>l.text),...parseLyrics(r.plainLyrics||'').map(l=>l.text)];}
-async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const url=$('ref-link');const known=title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>kanji.test(l.text))){label.textContent='等待日文歌曲';return;}
+async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const url=$('ref-link');const known=normalized(title)===normalized('おにけもだんす')?'https://utaten.com/lyric/mi22092863/':title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>kanji.test(l.text))){label.textContent='等待日文歌曲';return;}
  const key=JSON.stringify([refKey(record),lines.map(l=>l.text)]),raw=lines.filter(l=>!l.credit).map(l=>l.text);const use=(map,status)=>{if(!valid())return;refReadings.clear();for(const [k,v] of map)refReadings.set(k,v);label.textContent=status;repaintReference();};
  try{const stored=JSON.parse(localStorage.getItem(manualRefPrefix+key)||'null');if(Array.isArray(stored)){const m=new Map(stored);use(m,`已載入自訂參考讀音 ${m.size} 句`);return;}}catch{}
  if(!force&&refCache.has(key)){const m=refCache.get(key);use(m,m.size?`其他歌詞版本：已對照 ${m.size} 句`:'未找到可對照的標註版本');return;}
@@ -36,3 +67,18 @@ async function findReference(record,g,force=false){refAbort?.abort();refAbort=nu
 
 function repaintReference(){for(const l of lines){if(!l.credit&&kanji.test(l.text))renderSourceLine(l,true);}queueCenter();}
 function importReference(){if(!song||song.demo||!lines.length){$('ref-status').textContent='請先選擇歌曲';return;}const text=$('ref-text').value.trim();if(!text||text.length>30000){$('ref-status').textContent='請貼上有括號讀音的歌詞，每行一句，最多 30,000 字元。';return;}const raw=parseLyrics(text).map(l=>l.text),current=lines.filter(l=>!l.credit).map(l=>l.text),m=referenceMap(raw,current);if(!m.size){$('ref-status').textContent='沒有足夠的相符原句或括號假名，未套用。';return;}refAbort?.abort();refReadings.clear();for(const [k,v] of m)refReadings.set(k,v);let saved=true;try{localStorage.setItem(manualRefPrefix+refIdentity(),JSON.stringify([...m]));}catch{saved=false;}$('ref-status').textContent=`自訂參考讀音：已對照 ${m.size} 句${saved?'，已儲存':'，僅本次開頁'}`;$('ref-text').value='';repaintReference();}
+
+// Rich-text paste supports standard ruby and common .ruby/.rb/.rt markup.
+// Never mount the pasted HTML; extract text only from an inert template.
+function rubyClipboardText(html){
+ const template=document.createElement('template');template.innerHTML=html;
+ const chunks=[];let marked=0;
+ const getText=node=>node?.textContent||'';
+ function visit(node){if(node.nodeType===3){chunks.push(node.nodeValue);return;}if(node.nodeType!==1&&node.nodeType!==11)return;
+ if(node.nodeType===1){const tag=node.tagName;if(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','IMG','RT','RP'].includes(tag))return;
+ if(tag==='RUBY'||node.classList.contains('ruby')){const rt=node.querySelector('rt,.rt'),rb=node.querySelector('rb,.rb');let base=getText(rb);if(!base){const clone=node.cloneNode(true);clone.querySelectorAll('rt,rp,.rt').forEach(n=>n.remove());base=clone.textContent;}const reading=hira(getText(rt).trim());if(/^[\p{Script=Han}々〆ヶ]+$/u.test(base.trim())&&/^[ぁ-ゖー]+$/u.test(reading)){chunks.push(base.trim()+'('+reading+')');marked++;return;}}
+ if(tag==='BR'){chunks.push('\n');return;}}
+ for(const child of node.childNodes)visit(child);
+ if(node.nodeType===1&&['DIV','P','LI','SECTION'].includes(node.tagName))chunks.push('\n');}
+ visit(template.content);return marked?chunks.join('').trim():'';
+}

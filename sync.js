@@ -12,27 +12,45 @@ function disableAutoSync(){auto.checked=false;changeAuto();}
 function changeAuto(){try{localStorage.setItem('kotonoha.v3.auto',auto.checked?'on':'off');}catch{}syncRequest++;requestController?.abort();searchGeneration++;loadedKey='';remoteKey='';selectedRecord=null;setPlaying(false);updateControls();retry.disabled=!syncLocked();if(!auto.checked){syncStatus.textContent='手動模式';ui['track-status'].textContent='手動模式：音樂開始時啟動歌詞計時器。';}else if(syncLocked())receive(remote);else syncStatus.textContent='等待擴充功能連線…';}
 auto.addEventListener('change',changeAuto);
 function normalized(t){return String(t||'').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]/gu,'');}
+// Candidate order expresses confidence, not just the number of bracketed strings.
 function titleQueries(t,artist=''){
  const original=String(t||'').normalize('NFKC').trim();
- const promo=/(cover|歌ってみた|翻唱|official|music video|^mv$|^live$|主題歌|オープニング|エンディング|short|full ver)/iu;
- const clean=original.split(/\s*[／/]\s*(?=(?:TVアニメ|テレビアニメ|アニメ|TV anime|anime))/iu)[0]
- .replace(/\s*(?:TVアニメ|テレビアニメ)\s*[「『].*$/iu,'')
- .replace(/[【\[]([^】\]]+)[】\]]|\(([^)]+)\)/gu,(m,v,w)=>promo.test(v||w)?' ':m)
- .replace(/\s*(?:covered by|cover by|歌ってみた|翻唱|official music video|official video).*$/iu,'').trim();
+ const promo=/(?:cover(?:ed)?\b|歌ってみた|翻唱|official|music\s*video|^\s*mv\s*$|^\s*pv\s*$|^\s*live\s*$|主題歌|オープニング|エンディング|楽曲(?:好評)?配信|配信中|字幕|切り抜き|shorts?|full\s*ver|歌枠|耐久|公開中|^\s*HD\s*$)/iu;
+ const clean=original.split(/\s*[／/|｜-]?\s*(?=(?:TV\s*アニメ|テレビアニメ|TV\s*anime|アニメ[「『]))/iu)[0]
+ .replace(/[【\[（(]([^】\]）)]+)[】\]）)]/gu,(m,v)=>promo.test(v)?' ':m)
+ .replace(/\s*(?:covered\s+by|cover\s+by|歌ってみた|翻唱|official\s+(?:music\s+)?video).*$/iu,'').trim();
  const pieces=clean.split(/\s*[｜|–—]\s*|\s+[/-]\s+|(?<=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])\/(?=[^/])/u).map(v=>v.trim()).filter(Boolean);
- // Prefer artist - title only if metadata or the MV label supports that interpretation.
- if(pieces.length>1&&(artistMatches(pieces[0],artist)||(/\s[-–—]\s/u.test(clean)&&/music video|\bMV\b/iu.test(original)&&!artistMatches(pieces[1],artist))))pieces.shift();
  const unwrap=v=>v.replace(/^[「『【\[]|[」』】\]]$/gu,'').trim();
- const candidates=[];for(const piece of pieces){const value=unwrap(piece);const quoted=[...piece.matchAll(/[「『【\[]([^」』】\]]+)[」』】\]]/gu)].filter(m=>!promo.test(m[1]));const pref=quoted.find(m=>artistMatches(piece.slice(0,m.index),artist)||!piece.slice(0,m.index).trim());if(pref)candidates.push(pref[1]);if(value)candidates.push(value);for(const m of quoted)candidates.push(m[1]);}
+ const artistLike=v=>artistMatches(v,artist)||artistMatches(v.replace(/\s*[-–—]?\s*Topic$/i,''),artist);
+ if(pieces.length>1&&(artistLike(pieces[0])||(/\s[-–—]\s/u.test(clean)&&/music video|\bMV\b/iu.test(original)&&!artistLike(pieces[1]))))pieces.shift();
+ const strong=[],weak=[];
+ for(const piece of pieces){if(artistLike(piece)&&pieces.length>1)continue;const value=unwrap(piece);const quoted=[...piece.matchAll(/[「『【\[]([^」』】\]]+)[」』】\]]/gu)].filter(m=>!promo.test(m[1]));
+ const pref=quoted.find(m=>artistLike(piece.slice(0,m.index))||!piece.slice(0,m.index).trim());if(pref)strong.push(pref[1]);
+ const stripped=unwrap(piece.replace(/[【\[][^】\]]+[】\]]/gu,' ').replace(/\s+/g,' ').trim());if(stripped&&!promo.test(stripped))strong.push(stripped);if(value&&!promo.test(value))weak.push(value);for(const m of quoted)weak.push(m[1]);}
+ const candidates=[...strong,...weak,unwrap(clean)].filter(x=>x&&!promo.test(x));
  const hint=Object.keys(originalHints).find(k=>candidates.some(v=>normalized(v)===normalized(k)));
  const aliases=candidates.some(v=>/^初めての恋が終わる(?:時|とき)$/.test(v))?['初めての恋が終わる時','初めての恋が終わるとき']:[];
- return [...new Set([hint,...aliases,...candidates,unwrap(clean)].filter(Boolean))].slice(0,5);
+ const seen=new Set();return [hint,...aliases,...candidates].filter(v=>{const n=normalized(v);if(!n||seen.has(n))return false;seen.add(n);return true;}).slice(0,6);
 }
 function hasTimedLyrics(r){const rows=parseLyrics(r.syncedLyrics||'');return rows.some(x=>x.text&&Number.isFinite(x.t));}
 function sourceNoise(r){const rows=parseLyrics(r.syncedLyrics||r.plainLyrics||'');return rows.filter(l=>isCredit(l.text)||displayLyric(l.text)!==l.text).length;}
 function artistMatches(a,b){a=normalized(a);b=normalized(b);return !!a&&!!b&&(a===b||a.includes(b)||b.includes(a));}
 function scoreRecord(r,s,queries){const names=queries.map(normalized),title=normalized(r.trackName||r.name);const exact=names.includes(title);const titleRank=names.indexOf(title);const artist=normalized(s.artist),ra=normalized(r.artistName);const sameArtist=!!artist&&!!ra&&(artist===ra||artist.includes(ra)||ra.includes(artist));const delta=s.duration&&r.duration?Math.abs(s.duration-r.duration):999;const original=queries.map(originalHint).find(Boolean)||'';const isOriginal=artistMatches(original,r.artistName);const noise=sourceNoise(r);return {exact,sameArtist,delta,isOriginal,noise,score:(exact?200:0)+(titleRank===0?300:Math.max(0,100-titleRank*25))+(isOriginal?85:0)+(sameArtist?35:0)+(hasTimedLyrics(r)?150:0)+Math.max(0,30-delta/2)-Math.min(45,noise*3)};}
-function chooseAutoRecord(records,s,queries){const first=normalized(queries[0]);const hint=originalHint(queries[0]||'');const plausible=r=>{const t=normalized(r.trackName||r.name);return t===first||!!hint&&queries.some(q=>normalized(q)===t&&originalHint(q)===hint);};return records.filter(r=>plausible(r)).sort((a,b)=>scoreRecord(b,s,queries).score-scoreRecord(a,s,queries).score)[0];}
+function chooseAutoRecord(records,s,queries){
+ const first=normalized(queries[0]);const hint=originalHint(queries[0]||'');
+ const firstRecords=records.filter(r=>normalized(r.trackName||r.name)===first||!!hint&&queries.some(q=>normalized(q)===normalized(r.trackName||r.name)&&originalHint(q)===hint));
+ const ranked=rs=>rs.sort((a,b)=>scoreRecord(b,s,queries).score-scoreRecord(a,s,queries).score);
+ if(firstRecords.length){
+  const credible=firstRecords.filter(r=>{const m=scoreRecord(r,s,queries);return m.sameArtist||m.isOriginal||m.delta<=Math.max(12,(Number(s.duration)||0)*.15);});
+  if(credible.length)return ranked(credible)[0];
+  const artists=new Set(firstRecords.map(r=>normalized(r.artistName)).filter(Boolean));
+  if(artists.size<=1&&(!s.duration||firstRecords.some(r=>!r.duration)))return ranked(firstRecords)[0];
+  return undefined;
+ }
+ // A secondary title is safe only with corroborating artist AND recording duration.
+ const fallback=records.filter(r=>{const m=scoreRecord(r,s,queries);return m.exact&&m.sameArtist&&m.delta<=5;});
+ const names=new Set(fallback.map(r=>normalized(r.trackName||r.name)));return names.size===1?ranked(fallback)[0]:undefined;
+}
 function versionFor(s){return `${s.source==='youtube'?'YouTube':'YT Music'} · ${s.title} · ${s.artist}${s.videoId?' ['+s.videoId+']':''}`;}
 function applyRemote(){if(!syncLocked()||loadedKey!==remoteKey||!song)return;const actual=remote.duration;if(actual>0&&Math.abs(duration-actual)>.2){duration=actual;updateControls();}const elapsed=remote.playing&&!remote.ad?Math.max(0,Math.min(3,(Date.now()-remote.observedAt)/1000))*(remote.speed||1):0;const target=clamp(remote.position+elapsed,0,duration);const shouldPlay=remote.playing&&!remote.ad&&timed&&target<duration;position=target;anchor=performance.now();if(playing!==shouldPlay)setPlaying(shouldPlay);else update();updateControls();const message=remote.ad?'廣告期間暫停同步':remote.playing?'播放中':'暫停 / 等待播放';syncStatus.textContent='已連線 · '+message;ui['track-status'].textContent=syncNote+(timed?'｜時間由播放裝置同步。':'｜此歌詞沒有有效時間戳，不能逐句同步；可重新搜尋或逐句對時。');}
 function activateRecord(record,manual=false){if(!syncLocked()){loadSong(record);return;}selectedRecord=record;loadedKey=remoteKey;const mapping=getMapping(remoteKey);const profileName=mapping?.profile||versionFor(remote);song=record;originalRecord=record;let profile=null;try{profile=JSON.parse(localStorage.getItem(profileKey(profileName))||'null');}catch{}if(profile?.lrc&&hasTimedLyrics(record)&&!hasTimedLyrics({syncedLyrics:profile.lrc})){profile={...profile,lrc:''};}loadSong(record,profile||{name:profileName,rate:1,duration:0,lrc:'',offset:0});const match=scoreRecord(record,remote,titleQueries(remote.title,remote.artist));syncNote='來源：'+sourceName(record)+' · '+(record.artistName||'未知歌手')+(!match.sameArtist||match.delta>4?'｜可能為不同錄音，請確認時間軸。':'');if(manual){putMapping(remoteKey,{record,profile:profileName});syncCache.set(remoteKey,record);}applyRemote();}
