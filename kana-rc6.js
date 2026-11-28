@@ -1,12 +1,27 @@
 'use strict';
 // Readings are overlays only: never change raw lyrics, timestamps, or translation keys.
 const refReadings=new Map(),refCache=new Map();
-const autoRefPrefix='kotonoha.v103.reference.';
+const autoRefPrefix='kotonoha.v105.reference.';
 let refAbort=null;
 const refKey=r=>JSON.stringify([r?.trackName||'',r?.artistName||'']);
 const refIdentity=()=>JSON.stringify([refKey(song),lines.map(l=>l.text)]);
 const manualRefPrefix='kotonoha.rc6.reference.';
 const compactKanaText=s=>s.replace(/\s/gu,'');
+const digitReading=['','いち','に','さん','よん','ご','ろく','なな','はち','きゅう'];
+function numberReading(n){if(!Number.isInteger(n)||n<0||n>9999)return '';if(!n)return 'ぜろ';let r='';const th=Math.floor(n/1000),hu=Math.floor(n/100)%10,te=Math.floor(n/10)%10,one=n%10;if(th)r+=th===1?'せん':th===3?'さんぜん':th===8?'はっせん':digitReading[th]+'せん';if(hu)r+=hu===1?'ひゃく':hu===3?'さんびゃく':hu===6?'ろっぴゃく':hu===8?'はっぴゃく':digitReading[hu]+'ひゃく';if(te)r+=(te===1?'':digitReading[te])+'じゅう';return r+digitReading[one];}
+const thingReading=['','ひとつ','ふたつ','みっつ','よっつ','いつつ','むっつ','ななつ','やっつ','ここのつ'];
+function counterSpans(text){const out=[];const put=(m,r)=>{if(r)out.push({start:m.index,end:m.index+m[0].length,reading:r});};
+ for(const m of text.matchAll(/(?<![\d０-９一二三四五六七八九十百千万億兆零〇第.,．，])([0-9０-９]{1,4})(人|年|回|秒|歳)(?![称前組])/gu)){
+  const n=Number(m[1].normalize('NFKC')),unit=m[2],base=numberReading(n);if(!base||n===0)continue;
+  if(unit==='人'){const r=n===1?'ひとり':n===2?'ふたり':n%10===4?base.slice(0,-2)+'よにん':n===7?'しちにん':base+'にん';put(m,r);}
+  else if(unit==='年')put(m,(n%10===4?base.slice(0,-2)+'よ':base)+'ねん');
+  else if(unit==='秒')put(m,base+'びょう');
+  else {if(unit==='歳'&&n===20){put(m,'はたち');continue;}let r=base;if(n%10===1)r=r.slice(0,-2)+'いっ';else if(n%10===8)r=r.slice(0,-2)+'はっ';else if(n%10===0&&r.endsWith('じゅう'))r=r.slice(0,-3)+'じゅっ';put(m,r+(unit==='回'?'かい':'さい'));}
+ }
+ for(const m of text.matchAll(/(?<![\d０-９一二三四五六七八九十百千万億兆零〇第])([12１２])人(?:称|前)/gu)){const n=Number(m[1].normalize('NFKC'));if(m[0].endsWith('称'))put(m,(n===1?'いち':'に')+'にんしょう');else if(n===1)put(m,'いちにんまえ');}
+ for(const m of text.matchAll(/(?<![\d０-９一二三四五六七八九十百千万億兆零〇第])([1-9１-９])つ/gu))out.push({start:m.index,end:m.index+1,reading:thingReading[Number(m[1].normalize('NFKC'))].slice(0,-1),numeric:true});
+ return out;}
+const readingNeeded=t=>kanji.test(t)||counterSpans(t).length>0;
 function inlineSpans(text){let i=0;const out=[];for(const p of lyricParts(text)){if(p.reading)out.push({start:i,end:i+p.text.length,reading:p.reading});i+=p.text.length;}return out;}
 function normalSpans(text,tokens){const out=[];let pos=0;for(const t of tokens||[]){const b=t.surface_form,r=hira(t.reading||'');if(!b)continue;const at=text.indexOf(b,pos);if(at<0)return [];pos=at+b.length;if(!kanji.test(b)||!r||r==='*'||!/^[ぁ-ゖー]+$/u.test(r))continue;const first=b.search(kanji);let last=b.length-1;while(last>=0&&!kanji.test(b[last]))last--;const a=hira(b.slice(0,first)),z=hira(b.slice(last+1));if(r.startsWith(a)&&r.endsWith(z)&&r.length>a.length+z.length)out.push({start:at+first,end:at+last+1,reading:r.slice(a.length,r.length-z.length)});else out.push({start:at,end:pos,reading:r});}return out;}
 function ruleSpans(text,record,kind="all"){const out=[];const add=(re,reading)=>{for(const m of text.matchAll(re))out.push({start:m.index,end:m.index+m[0].length,reading:typeof reading==='function'?reading(m[0]):reading});};
@@ -29,11 +44,11 @@ function ruleSpans(text,record,kind="all"){const out=[];const add=(re,reading)=>
  }
  return out;
 }
-function mergeSpans(text,groups){const out=[];const valid=s=>Number.isInteger(s.start)&&Number.isInteger(s.end)&&s.start>=0&&s.end<=text.length&&s.start<s.end&&kanji.test(text.slice(s.start,s.end))&&/^[ぁ-ゖー]+$/u.test(s.reading);for(const group of groups)for(const input of group||[]){if(!valid(input))continue;let s={...input};for(const h of out.filter(x=>x.start<s.end&&s.start<x.end).sort((a,b)=>a.start-b.start)){if(h.start<=s.start&&h.end>=s.end){s=null;break;}if(h.start===s.start&&h.end<s.end){const word=text.slice(h.start,h.end);const alternatives=[h.reading,...(word==='一人'?['いちにん']:word==='二人'?['ににん']:[])];const r=alternatives.find(r=>s.reading.startsWith(r));if(!r){s=null;break;}s={start:h.end,end:s.end,reading:s.reading.slice(r.length)};}else if(h.end===s.end&&h.start>s.start&&s.reading.endsWith(h.reading)){s={start:s.start,end:h.start,reading:s.reading.slice(0,-h.reading.length)};}else{s=null;break;}}if(s&&valid(s)&&!out.some(x=>x.start<s.end&&s.start<x.end))out.push(s);}return out.sort((a,b)=>a.start-b.start);}
+function mergeSpans(text,groups){const out=[];const valid=s=>Number.isInteger(s.start)&&Number.isInteger(s.end)&&s.start>=0&&s.end<=text.length&&s.start<s.end&&(kanji.test(text.slice(s.start,s.end))||(s.numeric===true&&/^[1-9１-９]$/u.test(text.slice(s.start,s.end))))&&/^[ぁ-ゖー]+$/u.test(s.reading);for(const group of groups)for(const input of group||[]){if(!valid(input))continue;let s={...input};for(const h of out.filter(x=>x.start<s.end&&s.start<x.end).sort((a,b)=>a.start-b.start)){if(h.start<=s.start&&h.end>=s.end){s=null;break;}if(h.start===s.start&&h.end<s.end){const word=text.slice(h.start,h.end);const alternatives=[h.reading,...( /^(?:一|1|１)人$/u.test(word)?['いちにん']: /^(?:二|2|２)人$/u.test(word)?['ににん']:[])];const r=alternatives.find(r=>s.reading.startsWith(r));if(!r){s=null;break;}s={start:h.end,end:s.end,reading:s.reading.slice(r.length)};}else if(h.end===s.end&&h.start>s.start&&s.reading.endsWith(h.reading)){s={start:s.start,end:h.start,reading:s.reading.slice(0,-h.reading.length)};}else{s=null;break;}}if(s&&valid(s)&&!out.some(x=>x.start<s.end&&s.start<x.end))out.push(s);}return out.sort((a,b)=>a.start-b.start);}
 function referenceFor(text){const data=refReadings.get(compactKanaText(text));if(!Array.isArray(data))return [];const chars=[];for(let i=0;i<text.length;i++)if(!/\s/u.test(text[i]))chars.push(i);return data.map(s=>({start:chars[s.start],end:chars[s.end-1]+1,reading:s.reading})).filter(s=>Number.isInteger(s.start)&&Number.isInteger(s.end));}
 // Match punctuation-insensitive sequences of up to three lines in each version.
 // Preserve original line offsets for display and never rewrite the timed text.
-function matchChars(text){const chars=[],indices=[];for(const m of text.matchAll(/\P{M}\p{M}*|\p{M}+/gu)){const ch=m[0],at=m.index;for(const c of ch.normalize('NFKC')){if(/[\s\p{P}]/u.test(c))continue;chars.push(c);indices.push({start:at,end:at+ch.length});}}return {key:chars.join(''),indices};}
+function matchChars(text){const chars=[],indices=[];for(const m of text.matchAll(/\P{M}\p{M}*|\p{M}+/gu)){const ch=m[0],at=m.index;for(let c of ch.normalize('NFKC')){if(/[\s\p{P}]/u.test(c))continue;if(/^[1-9]$/.test(c)&&!/[0-9０-９一二三四五六七八九十百千万億兆零〇第]/u.test(text[at-1]||'')&&/^人/u.test(text.slice(at+ch.length)))c='一二三四五六七八九'[Number(c)-1];chars.push(c);indices.push({start:at,end:at+ch.length});}}return {key:chars.join(''),indices};}
 function referenceMap(rawRows,currentRows){
  const current=currentRows.map(raw=>{const text=displayLyric(raw);return {text,...matchChars(text)};}).filter(x=>x.key);
  const other=rawRows.map(raw=>{const text=displayLyric(raw);return {text,spans:inlineSpans(raw),...matchChars(text)};}).filter(x=>x.key);
@@ -57,8 +72,10 @@ function referenceMap(rawRows,currentRows){
  return new Map([...pending].filter(([,v])=>v.length));
 }
 function combineReferenceMaps(maps){const all=new Map(),out=new Map();for(const m of maps)for(const [key,spans] of m){if(!all.has(key))all.set(key,[]);for(const span of spans){const list=all.get(key);if(!list.some(x=>x.start===span.start&&x.end===span.end&&x.reading===span.reading))list.push(span);}}for(const [key,spans] of all){const valid=spans.filter(a=>!spans.some(b=>a!==b&&a.start<b.end&&b.start<a.end));if(valid.length)out.set(key,valid.sort((a,b)=>a.start-b.start));}return out;}
+// Count covered individual kanji, not merely lines containing at least one reading.
+function referenceCoverage(raw,map){let covered=0,total=0;const unique=new Set(raw.map(displayLyric).map(compactKanaText));for(const t of unique){const spans=mergeSpans(t,[map.get(t)||[]]);for(let i=0;i<t.length;i++){if(!kanji.test(t[i]))continue;total++;if(spans.some(s=>i>=s.start&&i<s.end))covered++;}}return total?covered/total:1;}
 function referenceRows(r){return [...parseLyrics(r.syncedLyrics||'').map(l=>l.text),...parseLyrics(r.plainLyrics||'').map(l=>l.text)];}
-async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const url=$('ref-link');const known=titleKey(title)===titleKey('好きだから。')?'https://utaten.com/lyric/ma21063004/':normalized(title)==='psycho'&&/hakos\s*baelz|ハコス[・･ ]?ベールズ/iu.test(artist)?'https://utaten.com/lyric/hw23050921/':normalized(title)===normalized('おにけもだんす')?'https://utaten.com/lyric/mi22092863/':title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>kanji.test(l.text))){label.textContent='等待日文歌曲';return;}
+async function findReference(record,g,force=false){refAbort?.abort();refAbort=null;refReadings.clear();const valid=()=>g===generation;const label=$('ref-status');const title=record?.trackName||'';const artist=originalHint(title)||record?.artistName||'';const lookupTitle=aliasesFor(title).find(t=>/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(t))||title;const url=$('ref-link');const known=titleKey(title)===titleKey('好きだから。')?'https://utaten.com/lyric/ma21063004/':normalized(title)==='psycho'&&/hakos\s*baelz|ハコス[・･ ]?ベールズ/iu.test(artist)?'https://utaten.com/lyric/hw23050921/':normalized(title)===normalized('おにけもだんす')?'https://utaten.com/lyric/mi22092863/':title==='星降る海'?'https://utaten.com/lyric/sz25120805/':title.startsWith('キラキラだとか夢だとか')?'https://utaten.com/lyric/ya17021530/':'';url.href=known||'https://www.google.com/search?'+new URLSearchParams({q:[title,artist,'歌詞 ふりがな site:utaten.com'].filter(Boolean).join(' ')});if(!title||record.demo||!lines.some(l=>readingNeeded(l.text))){label.textContent='等待日文歌曲';return;}
  const key=JSON.stringify([refKey(record),lines.map(l=>l.text)]),raw=lines.filter(l=>!l.credit).map(l=>l.text);const use=(map,status)=>{if(!valid())return;refReadings.clear();for(const [k,v] of map)refReadings.set(k,v);label.textContent=status;repaintReference();};
  try{const stored=JSON.parse(localStorage.getItem(manualRefPrefix+key)||'null');if(Array.isArray(stored)){const m=new Map(stored);use(m,`已載入自訂參考讀音 ${m.size} 句`);return;}}catch{}
  if(!force){try{const saved=JSON.parse(localStorage.getItem(autoRefPrefix+key)||'null');if(saved&&Date.now()-saved.at<30*86400000&&Array.isArray(saved.map)){const m=new Map(saved.map);use(m,`已載入網路參考讀音 ${m.size} 句`);return;}}catch{}}
@@ -66,19 +83,19 @@ async function findReference(record,g,force=false){refAbort?.abort();refAbort=nu
  const controller=new AbortController();refAbort=controller;label.textContent='正在搜尋有讀音的其他歌詞版本…';let errors=0;
  const candidates=[];const collect=records=>{for(const r of records||[]){if(titleKey(r.trackName)!==titleKey(title))continue;for(const text of [r.syncedLyrics,r.plainLyrics]){if(!text)continue;const m=referenceMap(parseLyrics(text).map(l=>l.text),raw);if(m.size)candidates.push(m);}}};
  collect([record]);const recent=searchedRecords.get(titleKey(title));if(recent&&Date.now()-recent.at<300000)collect(recent.records);
- let best=combineReferenceMaps(candidates);const count=new Set(raw.filter(x=>kanji.test(x)).map(x=>compactKanaText(displayLyric(x)))).size;
+ let best=combineReferenceMaps(candidates);const coverage=()=>referenceCoverage(raw,best);
  if(best.size)use(best,`已採用網路參考讀音 ${best.size} 句，背景補查中…`);
- if((force||!recent)&&best.size<count*.8){try{const v=await lyricFetch('https://lrclib.net/api/search?'+new URLSearchParams({track_name:title}),controller.signal,4500,{reuse:!force});if(Array.isArray(v))collect(v);}catch{errors++;}}
+ if((force||!recent)&&coverage()<.95){try{const v=await lyricFetch('https://lrclib.net/api/search?'+new URLSearchParams({track_name:lookupTitle}),controller.signal,4500,{reuse:!force});if(Array.isArray(v))collect(v);}catch{errors++;}}
  if(!valid()||controller.signal.aborted)return;
  best=combineReferenceMaps(candidates);
- if(best.size<count*.8){try{const q=artist?{title,artist,fast:'1'}:{Q:title,fast:'1'};const v=await lyricFetch('https://api.liriqo-alfarrizi.my.id/v1/lyrics?'+new URLSearchParams(q),controller.signal,6500,{reuse:!force});collect(liriqoRecords(v,[title]));}catch{errors++;}}
+ if(coverage()<.95){try{const q=artist?{title:lookupTitle,artist,fast:'1'}:{Q:lookupTitle,fast:'1'};const v=await lyricFetch('https://api.liriqo-alfarrizi.my.id/v1/lyrics?'+new URLSearchParams(q),controller.signal,6500,{reuse:!force});collect(liriqoRecords(v,[title,lookupTitle]));}catch{errors++;}}
  if(!valid()||controller.signal.aborted)return;
  best=combineReferenceMaps(candidates);if(!errors||best.size){refCache.set(key,best);if(refCache.size>40)refCache.delete(refCache.keys().next().value);if(best.size)try{localStorage.setItem(autoRefPrefix+key,JSON.stringify({at:Date.now(),map:[...best]}));}catch{}}
  use(best,best.size?`網路參考讀音：已對照 ${best.size} 句${errors?'（部分來源未連線）':''}`:errors?'未找到可對照版本（部分來源未連線）':'未找到可對照的標註版本；使用字典與規則');
 
 }
 
-function repaintReference(){for(const l of lines){if(!l.credit&&kanji.test(l.text))renderSourceLine(l,true);}queueCenter();}
+function repaintReference(){for(const l of lines){if(!l.credit&&readingNeeded(l.text))renderSourceLine(l,true);}queueCenter();}
 function importReference(){if(!song||song.demo||!lines.length){$('ref-status').textContent='請先選擇歌曲';return;}const text=$('ref-text').value.trim();if(!text||text.length>30000){$('ref-status').textContent='請貼上有括號讀音的歌詞，每行一句，最多 30,000 字元。';return;}const raw=parseLyrics(text).map(l=>l.text),current=lines.filter(l=>!l.credit).map(l=>l.text),m=referenceMap(raw,current);if(!m.size){$('ref-status').textContent='沒有足夠的相符原句或括號假名，未套用。';return;}refAbort?.abort();refReadings.clear();for(const [k,v] of m)refReadings.set(k,v);let saved=true;try{localStorage.setItem(manualRefPrefix+refIdentity(),JSON.stringify([...m]));}catch{saved=false;}$('ref-status').textContent=`自訂參考讀音：已對照 ${m.size} 句${saved?'，已儲存':'，僅本次開頁'}`;$('ref-text').value='';repaintReference();}
 
 // Rich-text paste supports standard ruby and common .ruby/.rb/.rt markup.
@@ -89,7 +106,7 @@ function rubyClipboardText(html){
  const getText=node=>node?.textContent||'';
  function visit(node){if(node.nodeType===3){chunks.push(node.nodeValue);return;}if(node.nodeType!==1&&node.nodeType!==11)return;
  if(node.nodeType===1){const tag=node.tagName;if(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','IMG','RT','RP'].includes(tag))return;
- if(tag==='RUBY'||node.classList.contains('ruby')){const rt=node.querySelector('rt,.rt'),rb=node.querySelector('rb,.rb');let base=getText(rb);if(!base){const clone=node.cloneNode(true);clone.querySelectorAll('rt,rp,.rt').forEach(n=>n.remove());base=clone.textContent;}const reading=hira(getText(rt).trim());if(/^[\p{Script=Han}々〆ヶ]+$/u.test(base.trim())&&/^[ぁ-ゖー]+$/u.test(reading)){chunks.push(base.trim()+'('+reading+')');marked++;return;}}
+ if(tag==='RUBY'||node.classList.contains('ruby')){const rt=node.querySelector('rt,.rt'),rb=node.querySelector('rb,.rb');let base=getText(rb);if(!base){const clone=node.cloneNode(true);clone.querySelectorAll('rt,rp,.rt').forEach(n=>n.remove());base=clone.textContent;}const reading=hira(getText(rt).trim());if(/^[\p{Script=Han}々〆ヶ0-9０-９]+$/u.test(base.trim())&&kanji.test(base.trim())&&/^[ぁ-ゖー]+$/u.test(reading)){chunks.push(base.trim()+'('+reading+')');marked++;return;}}
  if(tag==='BR'){chunks.push('\n');return;}}
  for(const child of node.childNodes)visit(child);
  if(node.nodeType===1&&['DIV','P','LI','SECTION'].includes(node.tagName))chunks.push('\n');}

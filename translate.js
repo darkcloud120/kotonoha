@@ -20,6 +20,7 @@ $('ai-auto').onchange=()=>{if(!$('ai-auto').checked){clearTimeout(aiState.timer)
 $('ai-disconnect').onclick=()=>{clearTimeout(aiState.timer);aiState.config=null;for(const r of aiState.inflight.values())r.controller.abort();$('ai-token').value='';$('ai-auto').checked=false;$('ai-remember').checked=false;try{sessionStorage.removeItem(aiSessionKey);localStorage.removeItem(aiRememberKey);}catch{}aiStatus('已停止並清除密碼。已送出的請求可能仍會計費。');};
 $('ai-remember').onchange=()=>{if(!$('ai-remember').checked)try{sessionStorage.removeItem(aiSessionKey);localStorage.removeItem(aiRememberKey);}catch{}else aiStatus('按儲存設定後，密碼會保留在此裝置。');};
 async function startAI(manual){
+ if(song?._provisional){aiStatus('請先確認候選歌詞，再翻譯。');return;}
  if(!song||!lyricTexts().length){aiStatus('請先載入歌詞。');return;}
  const source=lyricTexts(),sig=aiSignature(source),g=generation;let config=aiState.config;
  if(manual){try{config=saveAIConfig();}catch(e){aiStatus(e.message);return;}if(anyTranslation()&&!confirm('已有翻譯，確定重新翻譯並覆蓋目前顯示的翻譯？這會使用 API 額度。'))return;}

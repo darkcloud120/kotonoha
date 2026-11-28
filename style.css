@@ -27,3 +27,55 @@
 
 /* RC6: compact, separately raised controls; settings also accessible in focus mode. */
 .reader-tools{position:relative;border-top:1px solid var(--edge);padding:10px 0 5px;gap:8px}.reader-title{font-size:13px;color:var(--muted)}.reader-title button{background:#252738;border:1px solid #4a4860;color:var(--text);font-size:13px;padding:7px 12px;border-radius:10px;min-height:36px}.reader-title button[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}.reader-toolbar{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}.mode-area{flex:0 1 auto;min-width:0}.mode-caption{font-size:12px;justify-content:flex-start;gap:10px;align-items:center;margin-bottom:5px}.mode-switch{display:flex;gap:6px;border:0;background:transparent;padding:0;border-radius:0;flex-wrap:wrap}.mode-switch button{border:1px solid #47495e;background:#252738;color:var(--text);padding:8px 14px;min-height:38px;border-radius:9px;box-shadow:0 2px 0 #0d0e17;font-weight:600}.mode-switch button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#211935;box-shadow:0 2px 0 #7869b8}.translate-action{background:#2c2940;border:1px solid #7566a8;color:#e1d8ff;font-weight:600;min-height:38px;padding:8px 13px;white-space:nowrap}.reader-options .quick-actions{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 8px}.reader-options .quick-actions button,.ref-actions button{background:#252738;font-size:13px;padding:7px 10px;min-height:36px}.ref-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.ref-actions a{font-size:12px}.reader-tools #reader-status:empty{display:none}.reader-tools #reader-status{margin:0}.focus-mode .reader-title{display:flex}.focus-mode .reader-options[open]{display:block;position:absolute;top:45px;right:0;width:min(100%,390px);z-index:15;max-height:46dvh;overflow:auto;box-shadow:0 12px 36px #0009}.focus-mode .reader-options .quick-actions{display:flex!important}.focus-mode .reader-tools{z-index:3;overflow:visible}.focus-mode .reader-options:not([open]){display:none}.focus-mode .player{overflow:visible}.focus-mode .reader-options label{margin:6px 0}.reader-options label[hidden]{display:none!important}@media(max-width:720px){.reader-toolbar{gap:7px;align-items:end}.mode-switch button{padding:8px 10px;font-size:12px}.mode-caption{flex-wrap:wrap;gap:3px 8px}.mode-area{max-width:100%}.translate-action{font-size:12px;padding:8px 10px}.reader-title button{font-size:12px;min-height:36px}.focus-mode .reader-toolbar{flex-wrap:wrap}.focus-mode .reader-tools{padding:4px 0}.focus-mode .reader-title button{min-height:34px}.focus-mode .reader-options[open]{top:39px;max-height:48dvh}.focus-mode .reader-options input[type=range]{min-height:30px}}
+
+/* 1.0.5 — give the reading surface priority. */
+#confirm-match[hidden]{display:none!important}
+#confirm-match{justify-self:start;color:var(--accent);border-color:var(--accent);padding:5px 10px}
+body.provisional-match #track-status{color:var(--accent)}
+@media(min-width:721px){
+ header,main,footer{max-width:1440px}
+ main{grid-template-columns:minmax(240px,290px) minmax(0,1fr);gap:16px}
+ .player{padding:18px;gap:5px}
+ .player .track{gap:12px}
+ .track h1{font-size:clamp(23px,2.4vw,34px)}
+ .player .lyrics{height:clamp(350px,65dvh,850px)!important}
+ .reader-tools{padding:5px 0 2px;gap:5px}
+ .reader-title{min-height:30px}
+ .player .transport{padding-top:8px}
+}
+.focus-mode main{max-width:1440px;padding:6px}
+.focus-mode .player{height:calc(100dvh - 12px);padding:12px 16px;gap:4px}
+.focus-mode .player .lyrics{height:auto!important;flex:1 1 0;min-height:0}
+.focus-mode .track{gap:10px;padding-bottom:4px}
+.focus-mode .track .cover{width:44px;height:44px;border-radius:10px;font-size:24px}
+.focus-mode .track .eyebrow{display:none}
+.focus-mode .track h1{font-size:clamp(20px,2.4vw,28px);line-height:1.13}
+.focus-mode .track-info .muted{margin:2px 0;font-size:12px}
+.focus-mode .reader-tools{padding:3px 0;gap:4px;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.focus-mode .reader-title{grid-column:2;grid-row:1;justify-content:flex-end}
+.focus-mode .reader-title>span{display:none}
+.focus-mode .reader-toolbar{grid-column:1;grid-row:1;justify-content:flex-start;gap:6px;align-items:center;flex-wrap:wrap}
+.focus-mode .mode-caption{display:none}
+.focus-mode .reader-tools button{min-height:30px;padding:5px 9px;font-size:12px}
+.focus-mode .reader-options[open]{top:100%}
+.focus-mode #confirm-match{grid-column:1/-1;grid-row:2}
+.focus-mode .transport{flex-shrink:0;padding-top:5px}
+.focus-mode .controls{margin:4px 0;gap:8px}
+.focus-mode .controls button{padding:4px 10px;min-height:32px}
+.focus-mode .controls .play{width:38px;height:38px}
+.focus-mode .offset{display:flex!important;gap:7px;font-size:11px;min-height:29px}
+.focus-mode .offset button{padding:3px 8px;min-height:28px}
+.focus-mode .lyrics.timed::before{height:23%}
+.focus-mode .lyrics.timed::after{height:42%}
+@media(max-width:720px){
+ .player .lyrics{height:clamp(300px,60dvh,680px)!important}
+ .focus-mode .player{height:calc(100dvh - 12px);padding:9px!important}
+ .focus-mode .player .lyrics{height:auto!important;flex:1 1 0}
+ .focus-mode .track .cover{width:38px;height:38px}
+ .focus-mode .track h1{font-size:clamp(17px,5vw,23px)}
+ .focus-mode .track .icon-btn{width:31px;height:31px;padding:3px}
+ .focus-mode .reader-tools{grid-template-columns:minmax(0,1fr) auto}
+ .focus-mode .reader-tools button{padding:5px 7px;font-size:11px}
+ .focus-mode .reader-toolbar{gap:4px}
+ .focus-mode .offset{gap:6px}
+}

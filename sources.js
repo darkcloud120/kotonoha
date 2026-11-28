@@ -1,6 +1,6 @@
 'use strict';
 // Original-song hints contain metadata only, never lyric text.
-const originalHints={'カタオモイ':'Aimer','Say!ファンファーレ!':'白上フブキ','SUPERNOVA':'白上フブキ','好きだから。':'ユイカ','KING':'Kanaria','フォニイ':'ツミキ','Henceforth':'Orangestar','#あくあ色ぱれっと':'湊あくあ','おにけもだんす':'いろはにほへっと あやふぶみ','Cotton Days':'Sizuk','チューリングラブ':'ナナヲアカリ','ラビットホール':'DECO*27','ねぇねぇねぇ。':'ピノキオピー','教室に青':'星街すいせい','W/X/Y':'Tani Yuuki','初めての恋が終わる時':'supercell','初めての恋が終わるとき':'supercell'};
+const originalHints={'威風堂々':'梅とら','そこに命はありますか。':'DIVELA','DAYBREAK FRONTLINE':'Orangestar','カタオモイ':'Aimer','Say!ファンファーレ!':'白上フブキ','SUPERNOVA':'白上フブキ','好きだから。':'ユイカ','KING':'Kanaria','フォニイ':'ツミキ','Henceforth':'Orangestar','#あくあ色ぱれっと':'湊あくあ','おにけもだんす':'いろはにほへっと あやふぶみ','Cotton Days':'Sizuk','チューリングラブ':'ナナヲアカリ','ラビットホール':'DECO*27','ねぇねぇねぇ。':'ピノキオピー','教室に青':'星街すいせい','W/X/Y':'Tani Yuuki','初めての恋が終わる時':'supercell','初めての恋が終わるとき':'supercell'};
 const knownPages={'好きだから。':[['UtaTen（含假名）','https://utaten.com/lyric/ma21063004/']],'おにけもだんす':[['UtaTen（含假名）','https://utaten.com/lyric/mi22092863/'],['官方 MV','https://www.youtube.com/watch?v=4Hg0Nchl3HU']],'教室に青':[['歌ネット','https://www.uta-net.com/song/350749/'],['UtaTen（含假名）','https://utaten.com/lyric/hw24022875/']]};
 function originalHint(title){const n=titleKey(title);return Object.entries(originalHints).find(([t])=>titleKey(t)===n)?.[1]||'';}
 function sourceName(r){return r.source|| (r.id!=null?'LRCLIB':'自行匯入');}
@@ -19,7 +19,7 @@ async function searchSources(s,queries,signal,onStatus=()=>{}){
  const title=queries[0];if(!title)return {records:[],errors:[]};
  const primary=preferredArtist(s,queries),all=()=>[...records.values()];
  const best=()=>chooseAutoRecord(all(),s,queries),strict=()=>chooseAutoRecord(all(),s,queries,{strict:true});
- const finish=()=>{alive();rememberSearchRecords(queries,all());return {records:all().sort((a,b)=>scoreRecord(b,s,queries).score-scoreRecord(a,s,queries).score),errors:[...new Set(errors)]};};
+ const finish=()=>{alive();rememberSearchRecords(queries,all());return {records:all().sort((a,b)=>Number(scoreRecord(b,s,queries).exact)-Number(scoreRecord(a,s,queries).exact)||scoreRecord(b,s,queries).score-scoreRecord(a,s,queries).score),errors:[...new Set(errors)]};};
  const lr=params=>({name:'LRCLIB',url:'https://lrclib.net/api/search?'+new URLSearchParams(params),ms:4500,convert:data=>(Array.isArray(data)?data:data?[data]:[]).map(r=>({...r,source:'LRCLIB'}))});
  const lq=params=>({name:'LiriQo',url:'https://api.liriqo-alfarrizi.my.id/v1/lyrics?'+new URLSearchParams(params),ms:8000,convert:data=>liriqoRecords(data,queries)});
  async function phase(tasks){alive();const c=new AbortController();const abort=()=>c.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();let timer,closed=false;

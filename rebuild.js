@@ -3,7 +3,7 @@
 // Keep old data until the translation request has succeeded. Never rebuild the next track.
 $('rebuild-song').onclick=async()=>{
  const old=song,oldItem=currentItem(),g=generation,sg=searchGeneration,rg=syncRequest,remoteAtStart=syncLocked(),k=remoteKey;
- if(!old||old.demo||!lyricTexts().length)return readerNote('請先載入要重製的歌曲。');
+ if(!old||old.demo||old._provisional||!lyricTexts().length)return readerNote('請先載入要重製的歌曲。');
  const c=aiState.config;if(!c){$('ai-settings').open=true;return readerNote('請先設定私人 Worker，才能重新翻譯。');}
  if(window.kotoRebuildActive)return;
  if(aiState.inflight.size)return readerNote('目前正在翻譯，請完成後再重製。');
